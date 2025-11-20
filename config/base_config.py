@@ -19,7 +19,8 @@
 
 # 基础配置
 PLATFORM = "xhs"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
-KEYWORDS = "蚂蚁财富 黑卡"  # 关键词搜索配置，以英文逗号分隔
+# KEYWORDS = "蚂蚁财富 黑卡"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "蚂蚁 黑卡"
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 CRAWLER_TYPE = (
@@ -91,10 +92,10 @@ MAX_CONCURRENCY_NUM = 1
 ENABLE_GET_MEIDAS = True
 
 # 是否开启爬评论模式, 默认开启爬评论
-ENABLE_GET_COMMENTS = True
+ENABLE_GET_COMMENTS = False
 
 # 爬取一级评论的数量控制(单视频/帖子)
-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 100000
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 10
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段

@@ -49,3 +49,10 @@ XHS_CREATOR_ID_LIST = [
     "https://www.xiaohongshu.com/user/profile/5f58bd990000000001003753?xsec_token=ABYVg1evluJZZzpMX-VWzchxQ1qSNVW3r-jOEnKqMcgZw=&xsec_source=pc_search"
     # ........................
 ]
+
+# 排除的创作者列表（昵称或用户ID）
+# 可以填写创作者的昵称（nickname）或用户ID（user_id）
+# 示例：
+#   EXCLUDE_CREATORS = ["广告账号", "营销号", "5f58bd990000000001003753"]  # 混合使用昵称和ID
+#   EXCLUDE_CREATORS = []  # 不排除任何创作者
+EXCLUDE_CREATORS = ['637db651000000001e00c6db',]

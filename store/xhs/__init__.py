@@ -38,13 +38,41 @@ class XhsStoreFactory:
         "sqlite": XhsSqliteStoreImplement,
         "mongodb": XhsMongoStoreImplement,
     }
+    
+    # 单例实例，确保整个运行期间使用同一个Store实例（从而使用同一个时间戳）
+    _store_instance = None
 
     @staticmethod
     def create_store() -> AbstractStore:
+        # 如果已经创建过实例，直接返回（确保同一时间戳）
+        if XhsStoreFactory._store_instance is not None:
+            return XhsStoreFactory._store_instance
+            
         store_class = XhsStoreFactory.STORES.get(config.SAVE_DATA_OPTION)
         if not store_class:
             raise ValueError("[XhsStoreFactory.create_store] Invalid save option only supported csv or db or json or sqlite or mongodb ...")
-        return store_class()
+        
+        # 创建新实例并缓存
+        XhsStoreFactory._store_instance = store_class()
+        return XhsStoreFactory._store_instance
+    
+    @staticmethod
+    def get_existing_note_ids() -> set:
+        """获取已经爬取过的笔记ID集合"""
+        store = XhsStoreFactory.create_store()
+        # 如果是JSON存储，从 writer 中获取
+        if hasattr(store, 'writer') and hasattr(store.writer, 'existing_ids'):
+            return store.writer.existing_ids.get('contents', set())
+        return set()
+    
+    @staticmethod
+    def get_existing_comment_note_ids() -> set:
+        """获取已经爬取过评论的笔记ID集合（即哪些笔记的评论已经爬取完成）"""
+        store = XhsStoreFactory.create_store()
+        if hasattr(store, 'writer') and hasattr(store.writer, 'existing_ids'):
+            # 从评论数据中提取独特的 note_id
+            return store.writer.get_comment_note_ids()
+        return set()
 
 
 def get_video_url_arr(note_item: Dict) -> List:

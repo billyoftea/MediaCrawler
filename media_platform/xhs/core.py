@@ -192,23 +192,65 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     if not notes_res or not notes_res.get("has_more", False):
                         utils.logger.info("No more content!")
                         break
+                    
+                    # 获取已存在的笔记ID集合（用于断点续爬）
+                    existing_note_ids = xhs_store.XhsStoreFactory.get_existing_note_ids()
+                    if existing_note_ids:
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] Found {len(existing_note_ids)} existing notes, will skip them")
+                    
+                    # 过滤已爬取的笔记，只对新笔记请求详情
                     semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
-                    task_list = [
-                        self.get_note_detail_async_task(
-                            note_id=post_item.get("id"),
-                            xsec_source=post_item.get("xsec_source"),
-                            xsec_token=post_item.get("xsec_token"),
-                            semaphore=semaphore,
-                        ) for post_item in notes_res.get("items", {}) if post_item.get("model_type") not in ("rec_query", "hot_query")
-                    ]
+                    task_list = []
+                    skipped_count = 0
+                    
+                    for post_item in notes_res.get("items", {}):
+                        if post_item.get("model_type") in ("rec_query", "hot_query"):
+                            continue
+                        
+                        note_id = post_item.get("id")
+                        
+                        # 检查是否已爬取，已存在则跳过
+                        if note_id in existing_note_ids:
+                            utils.logger.info(f"[XiaoHongShuCrawler.search] Skip existing note: {note_id}")
+                            skipped_count += 1
+                            continue
+                        
+                        # 只为新笔记创建任务
+                        task_list.append(
+                            self.get_note_detail_async_task(
+                                note_id=note_id,
+                                xsec_source=post_item.get("xsec_source"),
+                                xsec_token=post_item.get("xsec_token"),
+                                semaphore=semaphore,
+                            )
+                        )
+                    
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Page {page}: {len(task_list)} new notes to fetch, {skipped_count} skipped")
+                    
+                    # 如果没有新笔记需要爬取，继续下一页
+                    if not task_list:
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] No new notes on page {page}, continue to next page")
+                        page += 1
+                        await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
+                        continue
+                    
                     note_details = await asyncio.gather(*task_list)
                     
-                    # 用于判断是否所有笔记都超出时间范围（早停逻辑）
-                    all_notes_out_of_range = True
+                    # 统计有效笔记数量（不使用早停逻辑，因为排序不是纯时间排序）
                     valid_notes_count = 0
                     
                     for note_detail in note_details:
                         if note_detail:
+                            # 创作者筛选：检查是否在排除列表中
+                            if config.EXCLUDE_CREATORS:
+                                creator_nickname = note_detail.get("nickname", "")
+                                creator_user_id = note_detail.get("user_id", "")
+                                
+                                # 检查昵称或用户ID是否在排除列表中
+                                if creator_nickname in config.EXCLUDE_CREATORS or creator_user_id in config.EXCLUDE_CREATORS:
+                                    utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - creator '{creator_nickname}' (ID: {creator_user_id}) is in exclude list")
+                                    continue
+                            
                             # 时间筛选：如果设置了时间范围，过滤不在范围内的笔记
                             note_time = note_detail.get("time", 0)
                             
@@ -222,8 +264,7 @@ class XiaoHongShuCrawler(AbstractCrawler):
                                 utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - after end date ({note_time} >= {end_time_ms})")
                                 continue
                             
-                            # 有效的笔记（在时间范围内）
-                            all_notes_out_of_range = False
+                            # 有效的笔记（在时间范围内且不在排除列表）
                             valid_notes_count += 1
                             
                             await xhs_store.update_xhs_note(note_detail)
@@ -233,10 +274,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Page {page}: found {valid_notes_count} valid notes in time range")
                     
-                    # 如果启用了时间筛选，并且所有笔记都已经超出时间范围，则提前结束
-                    if time_filter_mode and end_time_ms and all_notes_out_of_range and valid_notes_count == 0:
-                        utils.logger.info(f"[XiaoHongShuCrawler.search] All notes on page {page} are out of time range, stopping crawl")
-                        break
+                    # 不使用早停机制，因为小红书的排序不是纯时间排序
+                    # 可能后面的页面仍有符合时间范围的笔记
+                    # 依靠 has_more 和 断点续爬机制 来控制爬取范围
                     
                     page += 1
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Note details: {note_details}")
@@ -393,12 +433,34 @@ class XiaoHongShuCrawler(AbstractCrawler):
             utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Crawling comment mode is not enabled")
             return
 
-        utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Begin batch get note comments, note list: {note_list}")
+        # 获取已经爬取过评论的笔记ID集合（用于断点续爬）
+        existing_comment_note_ids = xhs_store.XhsStoreFactory.get_existing_comment_note_ids()
+        if existing_comment_note_ids:
+            utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Found {len(existing_comment_note_ids)} notes with existing comments, will skip them")
+        
+        # 过滤已爬取过评论的笔记
+        filtered_note_list = []
+        filtered_xsec_tokens = []
+        skipped_count = 0
+        
+        for index, note_id in enumerate(note_list):
+            if note_id in existing_comment_note_ids:
+                utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Skip note {note_id} - comments already crawled")
+                skipped_count += 1
+                continue
+            filtered_note_list.append(note_id)
+            filtered_xsec_tokens.append(xsec_tokens[index])
+        
+        if not filtered_note_list:
+            utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] All {len(note_list)} notes already have comments, skipping")
+            return
+        
+        utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Begin batch get note comments, {len(filtered_note_list)} new notes, {skipped_count} skipped")
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list: List[Task] = []
-        for index, note_id in enumerate(note_list):
+        for index, note_id in enumerate(filtered_note_list):
             task = asyncio.create_task(
-                self.get_comments(note_id=note_id, xsec_token=xsec_tokens[index], semaphore=semaphore),
+                self.get_comments(note_id=note_id, xsec_token=filtered_xsec_tokens[index], semaphore=semaphore),
                 name=note_id,
             )
             task_list.append(task)
