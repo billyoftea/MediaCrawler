@@ -43,7 +43,7 @@ from tools.cdp_browser import CDPBrowserManager
 from var import crawler_type_var, source_keyword_var
 
 from .client import XiaoHongShuClient
-from .exception import DataFetchError, RateLimitError
+from .exception import DataFetchError
 from .field import SearchSortType
 from .help import parse_note_info_from_note_url, parse_creator_info_from_url, get_search_id
 from .login import XiaoHongShuLogin
@@ -209,12 +209,6 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     
                     for note_detail in note_details:
                         if note_detail:
-                            # 创作者黑名单过滤：排除特定创作者的笔记
-                            creator_id = note_detail.get("user_id", "")
-                            if creator_id and creator_id in config.EXCLUDED_CREATOR_IDS:
-                                utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - creator {creator_id} in blacklist")
-                                continue
-                            
                             # 时间筛选：如果设置了时间范围，过滤不在范围内的笔记
                             note_time = note_detail.get("time", 0)
                             
@@ -394,54 +388,21 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 return None
 
     async def batch_get_note_comments(self, note_list: List[str], xsec_tokens: List[str]):
-        """Batch get note comments with rate limit handling"""
+        """Batch get note comments"""
         if not config.ENABLE_GET_COMMENTS:
             utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Crawling comment mode is not enabled")
             return
 
         utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Begin batch get note comments, note list: {note_list}")
-        
-        max_retries = 3  # 最多重试3次
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
-                task_list: List[Task] = []
-                for index, note_id in enumerate(note_list):
-                    task = asyncio.create_task(
-                        self.get_comments(note_id=note_id, xsec_token=xsec_tokens[index], semaphore=semaphore),
-                        name=note_id,
-                    )
-                    task_list.append(task)
-                await asyncio.gather(*task_list)
-                break  # 成功则退出循环
-                
-            except RateLimitError as e:
-                retry_count += 1
-                if retry_count >= max_retries:
-                    utils.logger.error(f"[XiaoHongShuCrawler.batch_get_note_comments] 达到最大重试次数({max_retries}), 跳过评论爬取")
-                    break
-                    
-                wait_time = 300  # 5分钟 = 300秒
-                utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 触发频率限制: {str(e)}")
-                utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 等待 {wait_time} 秒后重试 (第 {retry_count}/{max_retries} 次)")
-                
-                # 刷新页面（重新加载浏览器上下文）
-                try:
-                    utils.logger.info("[XiaoHongShuCrawler.batch_get_note_comments] 刷新浏览器页面...")
-                    await self.context_page.reload()
-                    await asyncio.sleep(5)  # 等待页面加载
-                except Exception as refresh_error:
-                    utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 刷新页面失败: {refresh_error}")
-                
-                # 等待5分钟
-                await asyncio.sleep(wait_time)
-                utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] 等待完成，开始重试...")
-            
-            except Exception as e:
-                utils.logger.error(f"[XiaoHongShuCrawler.batch_get_note_comments] 获取评论时出错: {str(e)}")
-                break
+        semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
+        task_list: List[Task] = []
+        for index, note_id in enumerate(note_list):
+            task = asyncio.create_task(
+                self.get_comments(note_id=note_id, xsec_token=xsec_tokens[index], semaphore=semaphore),
+                name=note_id,
+            )
+            task_list.append(task)
+        await asyncio.gather(*task_list)
 
     async def get_comments(self, note_id: str, xsec_token: str, semaphore: asyncio.Semaphore):
         """Get note comments with keyword filtering and quantity limitation"""

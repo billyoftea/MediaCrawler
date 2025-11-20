@@ -34,7 +34,7 @@ from base.base_crawler import AbstractApiClient
 from tools import utils
 
 
-from .exception import DataFetchError, IPBlockError, RateLimitError
+from .exception import DataFetchError, IPBlockError
 from .field import SearchNoteType, SearchSortType
 from .help import get_search_id, sign
 from .extractor import XiaoHongShuExtractor
@@ -161,12 +161,6 @@ class XiaoHongShuClient(AbstractApiClient):
             msg = f"解析JSON失败: {e}, 响应内容: {response.text[:200]}"
             utils.logger.error(msg)
             raise Exception(msg)
-        
-        # 检查频率限制错误（code 300013）
-        if data.get("code") == 300013:
-            err_msg = data.get("msg", "访问频次异常")
-            utils.logger.warning(f"触发频率限制: {err_msg}")
-            raise RateLimitError(err_msg)
             
         if data.get("success"):
             return data.get("data", data.get("success", {}))

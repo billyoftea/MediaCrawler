@@ -38,23 +38,13 @@ class XhsStoreFactory:
         "sqlite": XhsSqliteStoreImplement,
         "mongodb": XhsMongoStoreImplement,
     }
-    
-    # 单例实例，确保整个运行期间使用同一个Store实例（从而使用同一个时间戳）
-    _store_instance = None
 
     @staticmethod
     def create_store() -> AbstractStore:
-        # 如果已经创建过实例，直接返回
-        if XhsStoreFactory._store_instance is not None:
-            return XhsStoreFactory._store_instance
-            
         store_class = XhsStoreFactory.STORES.get(config.SAVE_DATA_OPTION)
         if not store_class:
             raise ValueError("[XhsStoreFactory.create_store] Invalid save option only supported csv or db or json or sqlite or mongodb ...")
-        
-        # 创建新实例并缓存
-        XhsStoreFactory._store_instance = store_class()
-        return XhsStoreFactory._store_instance
+        return store_class()
 
 
 def get_video_url_arr(note_item: Dict) -> List:

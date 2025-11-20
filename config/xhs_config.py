@@ -37,17 +37,6 @@ SORT_TYPE = "popularity_descending"
 START_DATE = ""  # 开始日期，格式：YYYY-MM-DD，留空表示不限制
 END_DATE = ""    # 结束日期，格式：YYYY-MM-DD，留空表示不限制
 
-# 排除创作者黑名单（不爬取这些创作者的笔记）
-# 填写创作者的 user_id，可以从笔记详情中的 user_id 字段获取
-# 或从创作者主页URL中提取，例如：
-#   https://www.xiaohongshu.com/user/profile/5f58bd990000000001003753
-#   user_id 就是: 5f58bd990000000001003753
-EXCLUDED_CREATOR_IDS = [
-    '637db651000000001e00c6db'
-    # "5f58bd990000000001003753",  # 示例：要排除的创作者ID
-    # "60a071d50000000001006425",  # 可以添加多个
-]
-
 # 指定笔记URL列表, 必须要携带xsec_token参数
 XHS_SPECIFIED_NOTE_URL_LIST = [
     "https://www.xiaohongshu.com/explore/64b95d01000000000c034587?xsec_token=AB0EFqJvINCkj6xOCKCQgfNNh8GdnBC_6XecG4QOddo3Q=&xsec_source=pc_cfeed"
