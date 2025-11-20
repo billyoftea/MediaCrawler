@@ -33,11 +33,13 @@ class AsyncFileWriter:
         self.platform = platform
         self.crawler_type = crawler_type
         self.wordcloud_generator = AsyncWordCloudGenerator() if config.ENABLE_GET_WORDCLOUD else None
+        # 在初始化时固定时间戳，确保一次运行中所有数据写入同一个文件
+        self.run_timestamp = utils.get_current_time().replace(':', '').replace(' ', '_')  # 格式: 2025-11-19_154823
 
     def _get_file_path(self, file_type: str, item_type: str) -> str:
         base_path = f"data/{self.platform}/{file_type}"
         pathlib.Path(base_path).mkdir(parents=True, exist_ok=True)
-        file_name = f"{self.crawler_type}_{item_type}_{utils.get_current_date()}.{file_type}"
+        file_name = f"{self.crawler_type}_{item_type}_{self.run_timestamp}.{file_type}"
         return f"{base_path}/{file_name}"
 
     async def write_to_csv(self, item: Dict, item_type: str):

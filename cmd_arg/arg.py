@@ -221,6 +221,22 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
                 rich_help_panel="账号配置",
             ),
         ] = config.COOKIES,
+        start_date: Annotated[
+            str,
+            typer.Option(
+                "--start_date",
+                help="开始日期，格式：YYYY-MM-DD（仅支持小红书平台）",
+                rich_help_panel="时间筛选",
+            ),
+        ] = getattr(config, 'START_DATE', ""),
+        end_date: Annotated[
+            str,
+            typer.Option(
+                "--end_date",
+                help="结束日期，格式：YYYY-MM-DD（仅支持小红书平台）",
+                rich_help_panel="时间筛选",
+            ),
+        ] = getattr(config, 'END_DATE', ""),
     ) -> SimpleNamespace:
         """MediaCrawler 命令行入口"""
 
@@ -238,6 +254,12 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
         config.ENABLE_GET_SUB_COMMENTS = enable_sub_comment
         config.SAVE_DATA_OPTION = save_data_option.value
         config.COOKIES = cookies
+        
+        # 设置时间筛选参数（仅小红书平台支持）
+        if hasattr(config, 'START_DATE'):
+            config.START_DATE = start_date
+        if hasattr(config, 'END_DATE'):
+            config.END_DATE = end_date
 
         return SimpleNamespace(
             platform=config.PLATFORM,
@@ -250,6 +272,8 @@ async def parse_cmd(argv: Optional[Sequence[str]] = None):
             save_data_option=config.SAVE_DATA_OPTION,
             init_db=init_db_value,
             cookies=config.COOKIES,
+            start_date=start_date,
+            end_date=end_date,
         )
 
     command = typer.main.get_command(app)

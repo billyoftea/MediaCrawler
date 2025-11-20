@@ -34,7 +34,7 @@ from base.base_crawler import AbstractApiClient
 from tools import utils
 
 
-from .exception import DataFetchError, IPBlockError
+from .exception import DataFetchError, IPBlockError, RateLimitError
 from .field import SearchNoteType, SearchSortType
 from .help import get_search_id, sign
 from .extractor import XiaoHongShuExtractor
@@ -137,23 +137,43 @@ class XiaoHongShuClient(AbstractApiClient):
         async with httpx.AsyncClient(proxy=self.proxy) as client:
             response = await client.request(method, url, timeout=self.timeout, **kwargs)
 
+        # 检查状态码
         if response.status_code == 471 or response.status_code == 461:
             # someday someone maybe will bypass captcha
-            verify_type = response.headers["Verifytype"]
-            verify_uuid = response.headers["Verifyuuid"]
-            msg = f"出现验证码，请求失败，Verifytype: {verify_type}，Verifyuuid: {verify_uuid}, Response: {response}"
+            verify_type = response.headers.get("Verifytype", "unknown")
+            verify_uuid = response.headers.get("Verifyuuid", "unknown")
+            msg = f"出现验证码,请求失败,Verifytype: {verify_type},Verifyuuid: {verify_uuid}, Response: {response.text[:200]}"
+            utils.logger.error(msg)
+            raise Exception(msg)
+        
+        # 检查其他错误状态码
+        if response.status_code != 200:
+            msg = f"请求失败,状态码: {response.status_code}, 响应: {response.text[:200]}"
             utils.logger.error(msg)
             raise Exception(msg)
 
         if return_response:
             return response.text
-        data: Dict = response.json()
-        if data["success"]:
+        
+        try:
+            data: Dict = response.json()
+        except Exception as e:
+            msg = f"解析JSON失败: {e}, 响应内容: {response.text[:200]}"
+            utils.logger.error(msg)
+            raise Exception(msg)
+        
+        # 检查频率限制错误（code 300013）
+        if data.get("code") == 300013:
+            err_msg = data.get("msg", "访问频次异常")
+            utils.logger.warning(f"触发频率限制: {err_msg}")
+            raise RateLimitError(err_msg)
+            
+        if data.get("success"):
             return data.get("data", data.get("success", {}))
-        elif data["code"] == self.IP_ERROR_CODE:
+        elif data.get("code") == self.IP_ERROR_CODE:
             raise IPBlockError(self.IP_ERROR_STR)
         else:
-            err_msg = data.get("msg", None) or f"{response.text}"
+            err_msg = data.get("msg", None) or f"{response.text[:200]}"
             raise DataFetchError(err_msg)
 
     async def get(self, uri: str, params: Optional[Dict] = None) -> Dict:
@@ -261,6 +281,8 @@ class XiaoHongShuClient(AbstractApiClient):
         page_size: int = 20,
         sort: SearchSortType = SearchSortType.GENERAL,
         note_type: SearchNoteType = SearchNoteType.ALL,
+        start_date: str = "",
+        end_date: str = "",
     ) -> Dict:
         """
         根据关键词搜索笔记
@@ -270,6 +292,8 @@ class XiaoHongShuClient(AbstractApiClient):
             page_size: 分页数据长度
             sort: 搜索结果排序指定
             note_type: 搜索的笔记类型
+            start_date: 开始日期，格式：YYYY-MM-DD
+            end_date: 结束日期，格式：YYYY-MM-DD
 
         Returns:
 

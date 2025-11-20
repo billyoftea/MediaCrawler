@@ -38,13 +38,23 @@ class XhsStoreFactory:
         "sqlite": XhsSqliteStoreImplement,
         "mongodb": XhsMongoStoreImplement,
     }
+    
+    # 单例实例，确保整个运行期间使用同一个Store实例（从而使用同一个时间戳）
+    _store_instance = None
 
     @staticmethod
     def create_store() -> AbstractStore:
+        # 如果已经创建过实例，直接返回
+        if XhsStoreFactory._store_instance is not None:
+            return XhsStoreFactory._store_instance
+            
         store_class = XhsStoreFactory.STORES.get(config.SAVE_DATA_OPTION)
         if not store_class:
             raise ValueError("[XhsStoreFactory.create_store] Invalid save option only supported csv or db or json or sqlite or mongodb ...")
-        return store_class()
+        
+        # 创建新实例并缓存
+        XhsStoreFactory._store_instance = store_class()
+        return XhsStoreFactory._store_instance
 
 
 def get_video_url_arr(note_item: Dict) -> List:
@@ -94,6 +104,15 @@ async def update_xhs_note(note_item: Dict):
             img.update({'url': img.get('url_default')})
 
     video_url = ','.join(get_video_url_arr(note_item))
+    
+    # 将毫秒时间戳转换为可读的时间格式
+    from datetime import datetime
+    time_ms = note_item.get("time")
+    last_update_time_ms = note_item.get("last_update_time", 0)
+    
+    # 转换为 YYYY-MM-DD HH:MM:SS 格式（用于JSON/CSV展示）
+    time_str = datetime.fromtimestamp(time_ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if time_ms else ""
+    last_update_time_str = datetime.fromtimestamp(last_update_time_ms / 1000).strftime('%Y-%m-%d %H:%M:%S') if last_update_time_ms else ""
 
     local_db_item = {
         "note_id": note_item.get("note_id"),  # 帖子id
@@ -101,8 +120,10 @@ async def update_xhs_note(note_item: Dict):
         "title": note_item.get("title") or note_item.get("desc", "")[:255],  # 帖子标题
         "desc": note_item.get("desc", ""),  # 帖子描述
         "video_url": video_url,  # 帖子视频url
-        "time": note_item.get("time"),  # 帖子发布时间
-        "last_update_time": note_item.get("last_update_time", 0),  # 帖子最后更新时间
+        "time": time_ms,  # 帖子发布时间（毫秒时间戳，DB存储需要）
+        "time_str": time_str,  # 帖子发布时间（可读格式，JSON/CSV展示用）
+        "last_update_time": last_update_time_ms,  # 帖子最后更新时间（毫秒时间戳）
+        "last_update_time_str": last_update_time_str,  # 帖子最后更新时间（可读格式）
         "user_id": user_info.get("user_id"),  # 用户id
         "nickname": user_info.get("nickname"),  # 用户昵称
         "avatar": user_info.get("avatar"),  # 用户头像

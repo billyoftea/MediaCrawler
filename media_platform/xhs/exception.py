@@ -27,3 +27,7 @@ class DataFetchError(RequestError):
 
 class IPBlockError(RequestError):
     """fetch so fast that the server block us ip"""
+
+
+class RateLimitError(RequestError):
+    """访问频率限制错误 - 需要等待后重试"""

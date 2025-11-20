@@ -43,7 +43,7 @@ from tools.cdp_browser import CDPBrowserManager
 from var import crawler_type_var, source_keyword_var
 
 from .client import XiaoHongShuClient
-from .exception import DataFetchError
+from .exception import DataFetchError, RateLimitError
 from .field import SearchSortType
 from .help import parse_note_info_from_note_url, parse_creator_info_from_url, get_search_id
 from .login import XiaoHongShuLogin
@@ -125,16 +125,52 @@ class XiaoHongShuCrawler(AbstractCrawler):
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""
         utils.logger.info("[XiaoHongShuCrawler.search] Begin search xiaohongshu keywords")
+        
+        # 解析时间筛选配置
+        start_time_ms = None
+        end_time_ms = None
+        if config.START_DATE:
+            from datetime import datetime
+            try:
+                start_dt = datetime.strptime(config.START_DATE, "%Y-%m-%d")
+                start_time_ms = int(start_dt.timestamp() * 1000)
+                utils.logger.info(f"[XiaoHongShuCrawler.search] Time filter - Start: {config.START_DATE} ({start_time_ms})")
+            except ValueError:
+                utils.logger.warning(f"[XiaoHongShuCrawler.search] Invalid START_DATE format: {config.START_DATE}")
+        
+        if config.END_DATE:
+            from datetime import datetime, timedelta
+            try:
+                end_dt = datetime.strptime(config.END_DATE, "%Y-%m-%d") + timedelta(days=1)  # 包含结束日期当天
+                end_time_ms = int(end_dt.timestamp() * 1000)
+                utils.logger.info(f"[XiaoHongShuCrawler.search] Time filter - End: {config.END_DATE} ({end_time_ms})")
+            except ValueError:
+                utils.logger.warning(f"[XiaoHongShuCrawler.search] Invalid END_DATE format: {config.END_DATE}")
+        
         xhs_limit_count = 20  # xhs limit page fixed value
-        if config.CRAWLER_MAX_NOTES_COUNT < xhs_limit_count:
-            config.CRAWLER_MAX_NOTES_COUNT = xhs_limit_count
+        
+        # 判断是否启用时间筛选模式（不限制数量）
+        time_filter_mode = bool(config.START_DATE or config.END_DATE)
+        if time_filter_mode:
+            utils.logger.info("[XiaoHongShuCrawler.search] Time filter mode enabled - will crawl all notes in time range")
+            # 时间筛选模式下自动使用时间排序
+            sort_type = SearchSortType.LATEST
+            utils.logger.info("[XiaoHongShuCrawler.search] Using time_descending sort for better efficiency")
+        else:
+            if config.CRAWLER_MAX_NOTES_COUNT < xhs_limit_count:
+                config.CRAWLER_MAX_NOTES_COUNT = xhs_limit_count
+            # 使用配置的排序方式
+            sort_type = SearchSortType(config.SORT_TYPE) if config.SORT_TYPE != "" else SearchSortType.GENERAL
+        
         start_page = config.START_PAGE
         for keyword in config.KEYWORDS.split(","):
             source_keyword_var.set(keyword)
             utils.logger.info(f"[XiaoHongShuCrawler.search] Current search keyword: {keyword}")
             page = 1
             search_id = get_search_id()
-            while (page - start_page + 1) * xhs_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
+            
+            # 如果启用时间筛选，则不限制数量；否则按配置的数量限制
+            while time_filter_mode or (page - start_page + 1) * xhs_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
                 if page < start_page:
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Skip page {page}")
                     page += 1
@@ -148,7 +184,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         keyword=keyword,
                         search_id=search_id,
                         page=page,
-                        sort=(SearchSortType(config.SORT_TYPE) if config.SORT_TYPE != "" else SearchSortType.GENERAL),
+                        start_date=config.START_DATE,
+                        end_date=config.END_DATE,
+                        sort=sort_type,
                     )
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Search notes res:{notes_res}")
                     if not notes_res or not notes_res.get("has_more", False):
@@ -164,12 +202,48 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         ) for post_item in notes_res.get("items", {}) if post_item.get("model_type") not in ("rec_query", "hot_query")
                     ]
                     note_details = await asyncio.gather(*task_list)
+                    
+                    # 用于判断是否所有笔记都超出时间范围（早停逻辑）
+                    all_notes_out_of_range = True
+                    valid_notes_count = 0
+                    
                     for note_detail in note_details:
                         if note_detail:
+                            # 创作者黑名单过滤：排除特定创作者的笔记
+                            creator_id = note_detail.get("user_id", "")
+                            if creator_id and creator_id in config.EXCLUDED_CREATOR_IDS:
+                                utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - creator {creator_id} in blacklist")
+                                continue
+                            
+                            # 时间筛选：如果设置了时间范围，过滤不在范围内的笔记
+                            note_time = note_detail.get("time", 0)
+                            
+                            # 如果笔记在开始日期之前，跳过
+                            if start_time_ms and note_time < start_time_ms:
+                                utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - before start date ({note_time} < {start_time_ms})")
+                                continue
+                            
+                            # 如果笔记在结束日期之后，跳过
+                            if end_time_ms and note_time >= end_time_ms:
+                                utils.logger.info(f"[XiaoHongShuCrawler.search] Skip note {note_detail.get('note_id')} - after end date ({note_time} >= {end_time_ms})")
+                                continue
+                            
+                            # 有效的笔记（在时间范围内）
+                            all_notes_out_of_range = False
+                            valid_notes_count += 1
+                            
                             await xhs_store.update_xhs_note(note_detail)
                             await self.get_notice_media(note_detail)
                             note_ids.append(note_detail.get("note_id"))
                             xsec_tokens.append(note_detail.get("xsec_token"))
+                    
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Page {page}: found {valid_notes_count} valid notes in time range")
+                    
+                    # 如果启用了时间筛选，并且所有笔记都已经超出时间范围，则提前结束
+                    if time_filter_mode and end_time_ms and all_notes_out_of_range and valid_notes_count == 0:
+                        utils.logger.info(f"[XiaoHongShuCrawler.search] All notes on page {page} are out of time range, stopping crawl")
+                        break
+                    
                     page += 1
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Note details: {note_details}")
                     await self.batch_get_note_comments(note_ids, xsec_tokens)
@@ -320,21 +394,54 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 return None
 
     async def batch_get_note_comments(self, note_list: List[str], xsec_tokens: List[str]):
-        """Batch get note comments"""
+        """Batch get note comments with rate limit handling"""
         if not config.ENABLE_GET_COMMENTS:
             utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Crawling comment mode is not enabled")
             return
 
         utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] Begin batch get note comments, note list: {note_list}")
-        semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
-        task_list: List[Task] = []
-        for index, note_id in enumerate(note_list):
-            task = asyncio.create_task(
-                self.get_comments(note_id=note_id, xsec_token=xsec_tokens[index], semaphore=semaphore),
-                name=note_id,
-            )
-            task_list.append(task)
-        await asyncio.gather(*task_list)
+        
+        max_retries = 3  # 最多重试3次
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
+                task_list: List[Task] = []
+                for index, note_id in enumerate(note_list):
+                    task = asyncio.create_task(
+                        self.get_comments(note_id=note_id, xsec_token=xsec_tokens[index], semaphore=semaphore),
+                        name=note_id,
+                    )
+                    task_list.append(task)
+                await asyncio.gather(*task_list)
+                break  # 成功则退出循环
+                
+            except RateLimitError as e:
+                retry_count += 1
+                if retry_count >= max_retries:
+                    utils.logger.error(f"[XiaoHongShuCrawler.batch_get_note_comments] 达到最大重试次数({max_retries}), 跳过评论爬取")
+                    break
+                    
+                wait_time = 300  # 5分钟 = 300秒
+                utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 触发频率限制: {str(e)}")
+                utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 等待 {wait_time} 秒后重试 (第 {retry_count}/{max_retries} 次)")
+                
+                # 刷新页面（重新加载浏览器上下文）
+                try:
+                    utils.logger.info("[XiaoHongShuCrawler.batch_get_note_comments] 刷新浏览器页面...")
+                    await self.context_page.reload()
+                    await asyncio.sleep(5)  # 等待页面加载
+                except Exception as refresh_error:
+                    utils.logger.warning(f"[XiaoHongShuCrawler.batch_get_note_comments] 刷新页面失败: {refresh_error}")
+                
+                # 等待5分钟
+                await asyncio.sleep(wait_time)
+                utils.logger.info(f"[XiaoHongShuCrawler.batch_get_note_comments] 等待完成，开始重试...")
+            
+            except Exception as e:
+                utils.logger.error(f"[XiaoHongShuCrawler.batch_get_note_comments] 获取评论时出错: {str(e)}")
+                break
 
     async def get_comments(self, note_id: str, xsec_token: str, semaphore: asyncio.Semaphore):
         """Get note comments with keyword filtering and quantity limitation"""

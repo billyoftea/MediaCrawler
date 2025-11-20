@@ -19,7 +19,7 @@
 
 # 基础配置
 PLATFORM = "xhs"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
-KEYWORDS = "编程副业,编程兼职"  # 关键词搜索配置，以英文逗号分隔
+KEYWORDS = "蚂蚁财富 黑卡"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
 CRAWLER_TYPE = (
@@ -47,7 +47,7 @@ SAVE_LOGIN_STATE = True
 # 是否启用CDP模式 - 使用用户现有的Chrome/Edge浏览器进行爬取，提供更好的反检测能力
 # 启用后将自动检测并启动用户的Chrome/Edge浏览器，通过CDP协议进行控制
 # 这种方式使用真实的浏览器环境，包括用户的扩展、Cookie和设置，大大降低被检测的风险
-ENABLE_CDP_MODE = True
+ENABLE_CDP_MODE = False
 
 # CDP调试端口，用于与浏览器通信
 # 如果端口被占用，系统会自动尝试下一个可用端口
@@ -76,27 +76,29 @@ SAVE_DATA_OPTION = "json"  # csv or db or json or sqlite
 # 用户浏览器缓存的浏览器文件配置
 USER_DATA_DIR = "%s_user_data_dir"  # %s will be replaced by platform name
 
-# 爬取开始页数 默认从第一页开始
+# 爆取开始页数 默认从第一页开始
 START_PAGE = 1
 
-# 爬取视频/帖子的数量控制
+# 爱取视频/帖子的数量控制
+# 注：对于小红书，如果设置了 START_DATE 和 END_DATE，则会忽略此数量限制，爆取时间范围内的所有帖子
+# 设置为 0 或负数表示不限制数量（但建议配合时间筛选使用）
 CRAWLER_MAX_NOTES_COUNT = 15
 
 # 并发爬虫数量控制
 MAX_CONCURRENCY_NUM = 1
 
 # 是否开启爬媒体模式（包含图片或视频资源），默认不开启爬媒体
-ENABLE_GET_MEIDAS = False
+ENABLE_GET_MEIDAS = True
 
 # 是否开启爬评论模式, 默认开启爬评论
 ENABLE_GET_COMMENTS = True
 
 # 爬取一级评论的数量控制(单视频/帖子)
-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 10
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 100000
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段
-ENABLE_GET_SUB_COMMENTS = False
+ENABLE_GET_SUB_COMMENTS = True
 
 # 词云相关
 # 是否开启生成评论词云图
@@ -115,7 +117,7 @@ STOP_WORDS_FILE = "./docs/hit_stopwords.txt"
 FONT_PATH = "./docs/STZHONGS.TTF"
 
 # 爬取间隔时间
-CRAWLER_MAX_SLEEP_SEC = 2
+CRAWLER_MAX_SLEEP_SEC = 10
 
 from .bilibili_config import *
 from .xhs_config import *
