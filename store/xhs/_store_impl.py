@@ -89,7 +89,12 @@ class XhsJsonStoreImplement(AbstractStore):
         await self.writer.write_single_item_to_json(item_type="comments", item=comment_item)
 
     async def store_creator(self, creator_item: Dict):
-        pass
+        """
+        store creator data to json file
+        :param creator_item:
+        :return:
+        """
+        await self.writer.write_single_item_to_json(item_type="creators", item=creator_item)
 
     def flush(self):
         """

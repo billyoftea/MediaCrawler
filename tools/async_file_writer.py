@@ -57,7 +57,7 @@ class AsyncFileWriter:
     
     def _load_existing_data(self):
         """在初始化时加载已存在的数据ID"""
-        for item_type in ['contents', 'comments']:
+        for item_type in ['contents', 'comments', 'creators']:
             file_path = self._get_file_path('json', item_type)
             
             # 初始化该类型的ID集合
@@ -75,7 +75,14 @@ class AsyncFileWriter:
                                 data = [data]
                             
                             # 根据item_type确定ID字段名
-                            id_field = 'note_id' if item_type == 'contents' else 'comment_id'
+                            if item_type == 'contents':
+                                id_field = 'note_id'
+                            elif item_type == 'comments':
+                                id_field = 'comment_id'
+                            elif item_type == 'creators':
+                                id_field = 'user_id'
+                            else:
+                                id_field = 'note_id'
                             
                             # 提取所有ID
                             for item in data:
@@ -155,14 +162,30 @@ class AsyncFileWriter:
                         # 提取已存在的ID
                         for existing_item in existing_data:
                             # 根据item_type确定ID字段名
-                            id_field = 'note_id' if item_type == 'contents' else 'comment_id'
+                            if item_type == 'contents':
+                                id_field = 'note_id'
+                            elif item_type == 'comments':
+                                id_field = 'comment_id'
+                            elif item_type == 'creators':
+                                id_field = 'user_id'
+                            else:
+                                id_field = 'note_id'  # 默认
+                            
                             if id_field in existing_item:
                                 self.existing_ids[item_type].add(existing_item[id_field])
                     except json.JSONDecodeError:
                         existing_data = []
             
             # 检查当前item的ID是否已存在
-            id_field = 'note_id' if item_type == 'contents' else 'comment_id'
+            if item_type == 'contents':
+                id_field = 'note_id'
+            elif item_type == 'comments':
+                id_field = 'comment_id'
+            elif item_type == 'creators':
+                id_field = 'user_id'
+            else:
+                id_field = 'note_id'  # 默认
+            
             item_id = item.get(id_field)
             
             if item_id in self.existing_ids[item_type]:

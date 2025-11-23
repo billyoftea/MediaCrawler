@@ -307,9 +307,15 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 )
                 if createor_info:
                     await xhs_store.save_creator(user_id, creator=createor_info)
+                    utils.logger.info(f"[XiaoHongShuCrawler.get_creators_and_notes] Successfully saved creator info for user_id: {user_id}")
+                else:
+                    utils.logger.warning(f"[XiaoHongShuCrawler.get_creators_and_notes] Failed to get creator info for user_id: {user_id}, HTML parsing may have failed")
             except ValueError as e:
                 utils.logger.error(f"[XiaoHongShuCrawler.get_creators_and_notes] Failed to parse creator URL: {e}")
                 continue
+            except Exception as e:
+                utils.logger.error(f"[XiaoHongShuCrawler.get_creators_and_notes] Error getting creator info for {creator_url}: {e}")
+                # Continue to crawl notes even if creator info fails
 
             # Use fixed crawling interval
             crawl_interval = config.CRAWLER_MAX_SLEEP_SEC
@@ -581,7 +587,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
             await self.cdp_manager.cleanup()
             self.cdp_manager = None
         else:
-            await self.browser_context.close()
+            try:
+                await self.browser_context.close()
+            except Exception as e:
+                utils.logger.debug(f"[XiaoHongShuCrawler.close] Browser context close error: {e}")
         utils.logger.info("[XiaoHongShuCrawler.close] Browser context closed ...")
 
     async def get_notice_media(self, note_detail: Dict):

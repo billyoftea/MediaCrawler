@@ -83,7 +83,7 @@ START_PAGE = 1
 # 爱取视频/帖子的数量控制
 # 注：对于小红书，如果设置了 START_DATE 和 END_DATE，则会忽略此数量限制，爆取时间范围内的所有帖子
 # 设置为 0 或负数表示不限制数量（但建议配合时间筛选使用）
-CRAWLER_MAX_NOTES_COUNT = 15
+CRAWLER_MAX_NOTES_COUNT = 0
 
 # 并发爬虫数量控制
 MAX_CONCURRENCY_NUM = 1
@@ -95,7 +95,7 @@ ENABLE_GET_MEIDAS = True
 ENABLE_GET_COMMENTS = False
 
 # 爬取一级评论的数量控制(单视频/帖子)
-CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 10
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 100000
 
 # 是否开启爬二级评论模式, 默认不开启爬二级评论
 # 老版本项目使用了 db, 则需参考 schema/tables.sql line 287 增加表字段
@@ -118,7 +118,7 @@ STOP_WORDS_FILE = "./docs/hit_stopwords.txt"
 FONT_PATH = "./docs/STZHONGS.TTF"
 
 # 爬取间隔时间
-CRAWLER_MAX_SLEEP_SEC = 15
+CRAWLER_MAX_SLEEP_SEC = 3
 
 from .bilibili_config import *
 from .xhs_config import *
